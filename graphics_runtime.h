@@ -4,6 +4,7 @@
 #define GL_GLEXT_PROTOTYPES 1
 #include <SDL2/SDL.h>
 #include <GL/gl.h>
+#include <GL/glu.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -71,6 +72,61 @@ static int pong_score_ai = 0;
 static const uint8_t DIGITS[10] = {
     0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F
 };
+
+// ==========================================
+// 3D First-Person Environment State
+// ==========================================
+typedef struct {
+    float x, y, z;
+    float size;
+    uint8_t r, g, b;
+} Cube3D;
+
+typedef struct {
+    float x, z;
+    float w, h;
+    uint8_t r, g, b;
+} Pillar3D;
+
+#define MAX_3D_CUBES 64
+#define MAX_3D_PILLARS 64
+
+static Cube3D g_cubes[MAX_3D_CUBES];
+static int g_cube_count = 0;
+
+static Pillar3D g_pillars[MAX_3D_PILLARS];
+static int g_pillar_count = 0;
+
+static float g_room_size = 40.0f;
+static float g_wall_height = 6.0f;
+static uint8_t g_wall_r = 15, g_wall_g = 52, g_wall_b = 96;
+
+static uint8_t g_floor1_r = 26, g_floor1_g = 26, g_floor1_b = 46;
+static uint8_t g_floor2_r = 22, g_floor2_g = 33, g_floor2_b = 62;
+
+static inline void set_3d_floor(float size, int r1, int g1, int b1, int r2, int g2, int b2) {
+    g_room_size = size;
+    g_floor1_r = (uint8_t)r1; g_floor1_g = (uint8_t)g1; g_floor1_b = (uint8_t)b1;
+    g_floor2_r = (uint8_t)r2; g_floor2_g = (uint8_t)g2; g_floor2_b = (uint8_t)b2;
+}
+
+static inline void set_3d_walls(float size, float height, int r, int g, int b) {
+    g_room_size = size;
+    g_wall_height = height;
+    g_wall_r = (uint8_t)r; g_wall_g = (uint8_t)g; g_wall_b = (uint8_t)b;
+}
+
+static inline void add_3d_cube(float x, float y, float z, float size, int r, int g, int b) {
+    if (g_cube_count < MAX_3D_CUBES) {
+        g_cubes[g_cube_count++] = (Cube3D){x, y, z, size, (uint8_t)r, (uint8_t)g, (uint8_t)b};
+    }
+}
+
+static inline void add_3d_pillar(float x, float z, float w, float h, int r, int g, int b) {
+    if (g_pillar_count < MAX_3D_PILLARS) {
+        g_pillars[g_pillar_count++] = (Pillar3D){x, z, w, h, (uint8_t)r, (uint8_t)g, (uint8_t)b};
+    }
+}
 
 // ==========================================
 // GLSL Shader Helper Functions
@@ -253,6 +309,7 @@ static inline void create_window_with_title(int width, int height, const char* t
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
     window = SDL_CreateWindow(
         title ? title : "Shader Program Compiler (OpenGL 2)",
@@ -760,7 +817,6 @@ static inline void pong_reset_ball(int direction) {
 static inline void run_pong_game() {
     glEndList();
 
-    // Auto-adjust positions if screen dimensions were customized
     pong_ai_x = screen_width - pong_paddle_x - pong_ai_w;
 
     printf("\n=======================================================\n");
@@ -792,7 +848,6 @@ static inline void run_pong_game() {
             }
         }
 
-        // 1. Continuous Keyboard Input (Player Movement)
         const Uint8* keys = SDL_GetKeyboardState(NULL);
         if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP]) {
             pong_paddle_y -= pong_paddle_speed;
@@ -801,13 +856,11 @@ static inline void run_pong_game() {
             pong_paddle_y += pong_paddle_speed;
         }
 
-        // Clamp Player Paddle inside window
         if (pong_paddle_y < 12.0f) pong_paddle_y = 12.0f;
         if (pong_paddle_y + pong_paddle_h > screen_height - 12.0f) {
             pong_paddle_y = screen_height - 12.0f - pong_paddle_h;
         }
 
-        // 2. Simple Smooth AI Paddle Logic
         float ai_center = pong_ai_y + pong_ai_h * 0.5f;
         if (ai_center < pong_ball_y - 12.0f) {
             pong_ai_y += pong_ai_speed;
@@ -819,11 +872,9 @@ static inline void run_pong_game() {
             pong_ai_y = screen_height - 12.0f - pong_ai_h;
         }
 
-        // 3. Ball Physics & Collision Detection
         pong_ball_x += pong_ball_vx;
         pong_ball_y += pong_ball_vy;
 
-        // Top & Bottom Boundary Collision
         if (pong_ball_y - pong_ball_radius <= 8.0f) {
             pong_ball_y = 8.0f + pong_ball_radius;
             pong_ball_vy = -pong_ball_vy;
@@ -832,7 +883,6 @@ static inline void run_pong_game() {
             pong_ball_vy = -pong_ball_vy;
         }
 
-        // Left Paddle Collision (Player) - Circle vs AABB Bounding Box
         if (pong_ball_vx < 0.0f &&
             pong_ball_x - pong_ball_radius <= pong_paddle_x + pong_paddle_w &&
             pong_ball_x + pong_ball_radius >= pong_paddle_x &&
@@ -840,12 +890,11 @@ static inline void run_pong_game() {
             pong_ball_y <= pong_paddle_y + pong_paddle_h + pong_ball_radius) {
 
             pong_ball_x = pong_paddle_x + pong_paddle_w + pong_ball_radius;
-            pong_ball_vx = -pong_ball_vx * 1.05f; // Slight acceleration per hit
+            pong_ball_vx = -pong_ball_vx * 1.05f;
             float hit_offset = (pong_ball_y - (pong_paddle_y + pong_paddle_h * 0.5f)) / (pong_paddle_h * 0.5f);
             pong_ball_vy = hit_offset * 6.5f;
         }
 
-        // Right Paddle Collision (AI) - Circle vs AABB Bounding Box
         if (pong_ball_vx > 0.0f &&
             pong_ball_x + pong_ball_radius >= pong_ai_x &&
             pong_ball_x - pong_ball_radius <= pong_ai_x + pong_ai_w &&
@@ -858,7 +907,6 @@ static inline void run_pong_game() {
             pong_ball_vy = hit_offset * 6.5f;
         }
 
-        // Scoring & Ball Reset
         if (pong_ball_x < 0.0f) {
             pong_score_ai++;
             printf("[GOAL] Computer scored! (%d - %d)\n", pong_score_player, pong_score_ai);
@@ -869,11 +917,9 @@ static inline void run_pong_game() {
             pong_reset_ball(-1);
         }
 
-        // 4. Render Stage
         glClearColor(bg_r, bg_g, bg_b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        // A. Background Shader (if active)
         if (has_shader && active_shader_prog != 0) {
             glUseProgram(active_shader_prog);
             GLint loc_time = glGetUniformLocation(active_shader_prog, "u_time");
@@ -895,45 +941,41 @@ static inline void run_pong_game() {
             glUseProgram(0);
         }
 
-        // B. Replay any custom user-drawn decorations from DSL
         glCallList(scene_display_list);
 
-        // C. Center Court Dotted Net
+        // Center Net
         glColor4ub(255, 255, 255, 90);
         float net_x = screen_width * 0.5f - 2.0f;
         for (float y = 10.0f; y < screen_height - 10.0f; y += 30.0f) {
             draw_rectangle((int)net_x, (int)y, 4, 16);
         }
 
-        // D. Digital Scoreboards at Top
-        glColor4ub(0, 255, 255, 200); // Player score cyan
+        // Digital Scoreboards
+        glColor4ub(0, 255, 255, 200);
         draw_digital_number(screen_width * 0.35f, 35.0f, pong_score_player, 40.0f);
 
-        glColor4ub(255, 0, 255, 200); // AI score magenta
+        glColor4ub(255, 0, 255, 200);
         draw_digital_number(screen_width * 0.65f, 35.0f, pong_score_ai, 40.0f);
 
-        // E. Draw Player Paddle (Rounded Rect)
+        // Paddles & Ball
         glColor4ub(pong_paddle_r, pong_paddle_g, pong_paddle_b, 255);
         draw_fill_rounded_rect((int)pong_paddle_x, (int)pong_paddle_y,
                                (int)pong_paddle_w, (int)pong_paddle_h, 6);
 
-        // F. Draw AI Paddle (Rounded Rect)
         glColor4ub(pong_ai_r, pong_ai_g, pong_ai_b, 255);
         draw_fill_rounded_rect((int)pong_ai_x, (int)pong_ai_y,
                                (int)pong_ai_w, (int)pong_ai_h, 6);
 
-        // G. Draw Ball (Smooth Circle)
         glColor4ub(pong_ball_r, pong_ball_g, pong_ball_b, 255);
         draw_fill_circle((int)pong_ball_x, (int)pong_ball_y, (int)pong_ball_radius);
 
-        // H. Top & Bottom Court Border Lines
         glColor4ub(255, 255, 255, 120);
         glLineWidth(3.0f);
         draw_line(0, 4, screen_width, 4);
         draw_line(0, screen_height - 4, screen_width, screen_height - 4);
 
         SDL_GL_SwapWindow(window);
-        SDL_Delay(16); // ~60 FPS
+        SDL_Delay(16);
     }
 
     if (scene_display_list != 0) glDeleteLists(scene_display_list, 1);
@@ -945,7 +987,438 @@ static inline void run_pong_game() {
 }
 
 // ==========================================
-// Static Showcase Render & Wait
+// 3D Rendering Helpers
+// ==========================================
+static inline void render_single_3d_cube(float x, float y, float z, float s, uint8_t r, uint8_t g, uint8_t b) {
+    float hs = s * 0.5f;
+
+    uint8_t tr = (r * 5) / 4 > 255 ? 255 : (r * 5) / 4;
+    uint8_t tg = (g * 5) / 4 > 255 ? 255 : (g * 5) / 4;
+    uint8_t tb = (b * 5) / 4 > 255 ? 255 : (b * 5) / 4;
+
+    uint8_t sr = (r * 3) / 4;
+    uint8_t sg = (g * 3) / 4;
+    uint8_t sb = (b * 3) / 4;
+
+    uint8_t br = r / 2;
+    uint8_t bg_col = g / 2;
+    uint8_t bb = b / 2;
+
+    glBegin(GL_QUADS);
+
+    // Front (Z+)
+    glColor3ub(r, g, b);
+    glVertex3f(x - hs, y - hs, z + hs);
+    glVertex3f(x + hs, y - hs, z + hs);
+    glVertex3f(x + hs, y + hs, z + hs);
+    glVertex3f(x - hs, y + hs, z + hs);
+
+    // Back (Z-)
+    glColor3ub(r, g, b);
+    glVertex3f(x + hs, y - hs, z - hs);
+    glVertex3f(x - hs, y - hs, z - hs);
+    glVertex3f(x - hs, y + hs, z - hs);
+    glVertex3f(x + hs, y + hs, z - hs);
+
+    // Top (Y+)
+    glColor3ub(tr, tg, tb);
+    glVertex3f(x - hs, y + hs, z + hs);
+    glVertex3f(x + hs, y + hs, z + hs);
+    glVertex3f(x + hs, y + hs, z - hs);
+    glVertex3f(x - hs, y + hs, z - hs);
+
+    // Bottom (Y-)
+    glColor3ub(br, bg_col, bb);
+    glVertex3f(x - hs, y - hs, z - hs);
+    glVertex3f(x + hs, y - hs, z - hs);
+    glVertex3f(x + hs, y - hs, z + hs);
+    glVertex3f(x - hs, y - hs, z + hs);
+
+    // Right (X+)
+    glColor3ub(sr, sg, sb);
+    glVertex3f(x + hs, y - hs, z + hs);
+    glVertex3f(x + hs, y - hs, z - hs);
+    glVertex3f(x + hs, y + hs, z - hs);
+    glVertex3f(x + hs, y + hs, z + hs);
+
+    // Left (X-)
+    glColor3ub(sr, sg, sb);
+    glVertex3f(x - hs, y - hs, z - hs);
+    glVertex3f(x - hs, y - hs, z + hs);
+    glVertex3f(x - hs, y + hs, z + hs);
+    glVertex3f(x - hs, y + hs, z - hs);
+
+    glEnd();
+
+    // Outlined wireframe edges for high-tech aesthetic
+    glColor3ub(255, 255, 255);
+    glLineWidth(1.5f);
+    glBegin(GL_LINES);
+    glVertex3f(x-hs, y-hs, z+hs); glVertex3f(x+hs, y-hs, z+hs);
+    glVertex3f(x+hs, y-hs, z+hs); glVertex3f(x+hs, y+hs, z+hs);
+    glVertex3f(x+hs, y+hs, z+hs); glVertex3f(x-hs, y+hs, z+hs);
+    glVertex3f(x-hs, y+hs, z+hs); glVertex3f(x-hs, y-hs, z+hs);
+
+    glVertex3f(x-hs, y-hs, z-hs); glVertex3f(x+hs, y-hs, z-hs);
+    glVertex3f(x+hs, y-hs, z-hs); glVertex3f(x+hs, y+hs, z-hs);
+    glVertex3f(x+hs, y+hs, z-hs); glVertex3f(x-hs, y+hs, z-hs);
+    glVertex3f(x-hs, y+hs, z-hs); glVertex3f(x-hs, y-hs, z-hs);
+
+    glVertex3f(x-hs, y-hs, z+hs); glVertex3f(x-hs, y-hs, z-hs);
+    glVertex3f(x+hs, y-hs, z+hs); glVertex3f(x+hs, y-hs, z-hs);
+    glVertex3f(x+hs, y+hs, z+hs); glVertex3f(x+hs, y+hs, z-hs);
+    glVertex3f(x-hs, y+hs, z+hs); glVertex3f(x-hs, y+hs, z-hs);
+    glEnd();
+}
+
+static inline void render_floor_grid(float size) {
+    float half = size * 0.5f;
+    float step = 2.0f;
+    int cols = (int)(size / step);
+
+    glBegin(GL_QUADS);
+    for (int i = 0; i < cols; i++) {
+        for (int j = 0; j < cols; j++) {
+            float x1 = -half + (float)i * step;
+            float z1 = -half + (float)j * step;
+            float x2 = x1 + step;
+            float z2 = z1 + step;
+
+            if ((i + j) % 2 == 0) {
+                glColor3ub(g_floor1_r, g_floor1_g, g_floor1_b);
+            } else {
+                glColor3ub(g_floor2_r, g_floor2_g, g_floor2_b);
+            }
+
+            glVertex3f(x1, 0.0f, z1);
+            glVertex3f(x2, 0.0f, z1);
+            glVertex3f(x2, 0.0f, z2);
+            glVertex3f(x1, 0.0f, z2);
+        }
+    }
+    glEnd();
+
+    // Subtle neon grid lines
+    glColor4ub(0, 255, 255, 60);
+    glLineWidth(1.0f);
+    glBegin(GL_LINES);
+    for (float x = -half; x <= half; x += step) {
+        glVertex3f(x, 0.01f, -half);
+        glVertex3f(x, 0.01f,  half);
+    }
+    for (float z = -half; z <= half; z += step) {
+        glVertex3f(-half, 0.01f, z);
+        glVertex3f( half, 0.01f, z);
+    }
+    glEnd();
+}
+
+static inline void render_walls(float size, float height) {
+    float half = size * 0.5f;
+
+    glBegin(GL_QUADS);
+
+    // North wall (+Z)
+    glColor3ub(g_wall_r, g_wall_g, g_wall_b);
+    glVertex3f(-half, 0.0f, half);
+    glVertex3f( half, 0.0f, half);
+    glVertex3f( half, height, half);
+    glVertex3f(-half, height, half);
+
+    // South wall (-Z)
+    glColor3ub(g_wall_r, g_wall_g, g_wall_b);
+    glVertex3f( half, 0.0f, -half);
+    glVertex3f(-half, 0.0f, -half);
+    glVertex3f(-half, height, -half);
+    glVertex3f( half, height, -half);
+
+    // East wall (+X)
+    glColor3ub((g_wall_r * 4)/5, (g_wall_g * 4)/5, (g_wall_b * 4)/5);
+    glVertex3f(half, 0.0f, half);
+    glVertex3f(half, 0.0f, -half);
+    glVertex3f(half, height, -half);
+    glVertex3f(half, height, half);
+
+    // West wall (-X)
+    glColor3ub((g_wall_r * 4)/5, (g_wall_g * 4)/5, (g_wall_b * 4)/5);
+    glVertex3f(-half, 0.0f, -half);
+    glVertex3f(-half, 0.0f, half);
+    glVertex3f(-half, height, half);
+    glVertex3f(-half, height, -half);
+
+    glEnd();
+
+    // Neon Cyber Wall Trim Lines
+    glColor4ub(0, 255, 255, 220);
+    glLineWidth(2.5f);
+    glBegin(GL_LINE_LOOP);
+    glVertex3f(-half, 0.05f, -half);
+    glVertex3f( half, 0.05f, -half);
+    glVertex3f( half, 0.05f,  half);
+    glVertex3f(-half, 0.05f,  half);
+    glEnd();
+
+    glBegin(GL_LINE_LOOP);
+    glVertex3f(-half, height, -half);
+    glVertex3f( half, height, -half);
+    glVertex3f( half, height,  half);
+    glVertex3f(-half, height,  half);
+    glEnd();
+}
+
+static inline void render_floating_crystal(float t) {
+    glPushMatrix();
+    glTranslatef(0.0f, 2.2f + 0.3f * sinf(t * 2.0f), 0.0f);
+    glRotatef(t * 45.0f, 0.0f, 1.0f, 0.0f);
+    glRotatef(t * 25.0f, 1.0f, 0.0f, 1.0f);
+
+    float s = 0.9f;
+    glBegin(GL_TRIANGLES);
+
+    // Top pyramid
+    glColor3ub(255, 215, 0); // Gold
+    glVertex3f(0.0f, s, 0.0f); glVertex3f(-s*0.6f, 0.0f, -s*0.6f); glVertex3f( s*0.6f, 0.0f, -s*0.6f);
+    glVertex3f(0.0f, s, 0.0f); glVertex3f( s*0.6f, 0.0f, -s*0.6f); glVertex3f( s*0.6f, 0.0f,  s*0.6f);
+    glVertex3f(0.0f, s, 0.0f); glVertex3f( s*0.6f, 0.0f,  s*0.6f); glVertex3f(-s*0.6f, 0.0f,  s*0.6f);
+    glVertex3f(0.0f, s, 0.0f); glVertex3f(-s*0.6f, 0.0f,  s*0.6f); glVertex3f(-s*0.6f, 0.0f, -s*0.6f);
+
+    // Bottom pyramid
+    glColor3ub(255, 140, 0);
+    glVertex3f(0.0f, -s, 0.0f); glVertex3f( s*0.6f, 0.0f, -s*0.6f); glVertex3f(-s*0.6f, 0.0f, -s*0.6f);
+    glVertex3f(0.0f, -s, 0.0f); glVertex3f( s*0.6f, 0.0f,  s*0.6f); glVertex3f( s*0.6f, 0.0f, -s*0.6f);
+    glVertex3f(0.0f, -s, 0.0f); glVertex3f(-s*0.6f, 0.0f,  s*0.6f); glVertex3f( s*0.6f, 0.0f,  s*0.6f);
+    glVertex3f(0.0f, -s, 0.0f); glVertex3f(-s*0.6f, 0.0f, -s*0.6f); glVertex3f(-s*0.6f, 0.0f,  s*0.6f);
+    glEnd();
+
+    glPopMatrix();
+}
+
+// ==========================================
+// 3D First-Person POV Game Engine
+// ==========================================
+static inline void run_3d_game() {
+    glEndList();
+
+    printf("\n=======================================================\n");
+    printf("   🕹️ 3D FIRST-PERSON POV GAME RUNNING (OpenGL 2)      \n");
+    printf("   - Move: [W] / [S] (Forward/Back), [A] / [D] (Strafe)\n");
+    printf("   - Look: [Left] / [Right] Arrows or [Q] / [E] or Mouse\n");
+    printf("   - Press [SPACE] to cycle live OpenGL 2 shaders!    \n");
+    printf("   - Press [ESC] to exit                              \n");
+    printf("=======================================================\n\n");
+
+    // Enable hardware 3D depth testing
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+
+    // Initial camera position & orientation
+    float cam_x = 0.0f;
+    float cam_y = 1.6f; // Standard 1.6m eye-level height
+    float cam_z = g_room_size * 0.35f;
+    float cam_yaw = 0.0f; // Radians
+    float cam_pitch = 0.0f;
+
+    float move_speed = 0.16f;
+    float turn_speed = 0.045f;
+
+    bool running = true;
+    SDL_Event event;
+
+    // Default to gentle mouse relative look
+    SDL_SetRelativeMouseMode(SDL_TRUE);
+
+    while (running) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) {
+                running = false;
+            } else if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_ESCAPE) {
+                    running = false;
+                } else if (event.key.keysym.sym == SDLK_SPACE) {
+                    cycle_next_shader();
+                } else if (event.key.keysym.sym == SDLK_m) {
+                    // Toggle mouse grab
+                    SDL_bool is_rel = SDL_GetRelativeMouseMode();
+                    SDL_SetRelativeMouseMode(is_rel ? SDL_FALSE : SDL_TRUE);
+                }
+            } else if (event.type == SDL_MOUSEMOTION && SDL_GetRelativeMouseMode()) {
+                cam_yaw += (float)event.motion.xrel * 0.003f;
+                cam_pitch -= (float)event.motion.yrel * 0.003f;
+                if (cam_pitch > 1.2f) cam_pitch = 1.2f;
+                if (cam_pitch < -1.2f) cam_pitch = -1.2f;
+            }
+        }
+
+        // 1. Keyboard Controls
+        const Uint8* keys = SDL_GetKeyboardState(NULL);
+
+        // Turn camera with Left/Right or Q/E
+        if (keys[SDL_SCANCODE_LEFT] || keys[SDL_SCANCODE_Q]) cam_yaw -= turn_speed;
+        if (keys[SDL_SCANCODE_RIGHT] || keys[SDL_SCANCODE_E]) cam_yaw += turn_speed;
+
+        // Direction vectors along the X-Z ground plane
+        float fwd_x = sinf(cam_yaw);
+        float fwd_z = -cosf(cam_yaw);
+        float right_x = cosf(cam_yaw);
+        float right_z = sinf(cam_yaw);
+
+        float dx = 0.0f;
+        float dz = 0.0f;
+
+        if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP]) {
+            dx += fwd_x * move_speed;
+            dz += fwd_z * move_speed;
+        }
+        if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN]) {
+            dx -= fwd_x * move_speed;
+            dz -= fwd_z * move_speed;
+        }
+        if (keys[SDL_SCANCODE_A]) {
+            dx -= right_x * move_speed;
+            dz -= right_z * move_speed;
+        }
+        if (keys[SDL_SCANCODE_D]) {
+            dx += right_x * move_speed;
+            dz += right_z * move_speed;
+        }
+
+        // 2. Collision Detection & Wall Sliding
+        float next_x = cam_x + dx;
+        float next_z = cam_z + dz;
+
+        // Perimeter room wall bounds
+        float room_limit = g_room_size * 0.5f - 0.9f;
+        if (next_x < -room_limit) next_x = -room_limit;
+        if (next_x >  room_limit) next_x =  room_limit;
+        if (next_z < -room_limit) next_z = -room_limit;
+        if (next_z >  room_limit) next_z =  room_limit;
+
+        // Bounding-Box collision against 3D cubes (smooth sliding)
+        for (int i = 0; i < g_cube_count; i++) {
+            float box_half = g_cubes[i].size * 0.5f + 0.6f;
+            if (fabsf(next_x - g_cubes[i].x) < box_half && fabsf(next_z - g_cubes[i].z) < box_half) {
+                if (fabsf(cam_x - g_cubes[i].x) >= box_half) next_x = cam_x;
+                if (fabsf(cam_z - g_cubes[i].z) >= box_half) next_z = cam_z;
+            }
+        }
+
+        // Bounding-Box collision against pillars
+        for (int i = 0; i < g_pillar_count; i++) {
+            float box_half = g_pillars[i].w * 0.5f + 0.6f;
+            if (fabsf(next_x - g_pillars[i].x) < box_half && fabsf(next_z - g_pillars[i].z) < box_half) {
+                if (fabsf(cam_x - g_pillars[i].x) >= box_half) next_x = cam_x;
+                if (fabsf(cam_z - g_pillars[i].z) >= box_half) next_z = cam_z;
+            }
+        }
+
+        cam_x = next_x;
+        cam_z = next_z;
+
+        // 3. Setup 3D Projection & Camera Matrices
+        glViewport(0, 0, screen_width, screen_height);
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        gluPerspective(65.0, (double)screen_width / (double)screen_height, 0.1, 200.0);
+
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+
+        float target_x = cam_x + cosf(cam_pitch) * sinf(cam_yaw);
+        float target_y = cam_y + sinf(cam_pitch);
+        float target_z = cam_z - cosf(cam_pitch) * cosf(cam_yaw);
+
+        gluLookAt(cam_x, cam_y, cam_z,
+                  target_x, target_y, target_z,
+                  0.0f, 1.0f, 0.0f);
+
+        // 4. Render Stage
+        glClearColor(bg_r, bg_g, bg_b, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // A. Draw 3D Tiled Floor
+        render_floor_grid(g_room_size);
+
+        // B. Draw 3D Room Enclosure Walls
+        render_walls(g_room_size, g_wall_height);
+
+        // C. Draw 3D Shaded Cubes
+        for (int i = 0; i < g_cube_count; i++) {
+            render_single_3d_cube(g_cubes[i].x, g_cubes[i].y, g_cubes[i].z,
+                                   g_cubes[i].size,
+                                   g_cubes[i].r, g_cubes[i].g, g_cubes[i].b);
+        }
+
+        // D. Draw 3D Pillars
+        for (int i = 0; i < g_pillar_count; i++) {
+            float s = g_pillars[i].w;
+            float h = g_pillars[i].h;
+            render_single_3d_cube(g_pillars[i].x, h * 0.5f, g_pillars[i].z,
+                                   s, g_pillars[i].r, g_pillars[i].g, g_pillars[i].b);
+        }
+
+        // E. Floating Rotating Centerpiece Crystal
+        float elapsed_sec = (float)SDL_GetTicks() / 1000.0f;
+        render_floating_crystal(elapsed_sec);
+
+        // 5. Draw 2D HUD (Crosshair & Info Banner)
+        glDisable(GL_DEPTH_TEST);
+        glMatrixMode(GL_PROJECTION);
+        glPushMatrix();
+        glLoadIdentity();
+        glOrtho(0.0, (GLdouble)screen_width, (GLdouble)screen_height, 0.0, -1.0, 1.0);
+        glMatrixMode(GL_MODELVIEW);
+        glPushMatrix();
+        glLoadIdentity();
+
+        // Crosshair (+)
+        float cx = screen_width * 0.5f;
+        float cy = screen_height * 0.5f;
+        glColor4ub(255, 255, 255, 220);
+        glLineWidth(2.0f);
+        glBegin(GL_LINES);
+        glVertex2f(cx - 9.0f, cy); glVertex2f(cx + 9.0f, cy);
+        glVertex2f(cx, cy - 9.0f); glVertex2f(cx, cy + 9.0f);
+        glEnd();
+
+        // Top Status Strip
+        glColor4ub(10, 15, 30, 180);
+        glBegin(GL_QUADS);
+        glVertex2f(20.0f, 15.0f);
+        glVertex2f((float)screen_width - 20.0f, 15.0f);
+        glVertex2f((float)screen_width - 20.0f, 48.0f);
+        glVertex2f(20.0f, 48.0f);
+        glEnd();
+
+        glColor4ub(0, 255, 255, 240);
+        glLineWidth(1.5f);
+        glBegin(GL_LINE_LOOP);
+        glVertex2f(20.0f, 15.0f);
+        glVertex2f((float)screen_width - 20.0f, 15.0f);
+        glVertex2f((float)screen_width - 20.0f, 48.0f);
+        glVertex2f(20.0f, 48.0f);
+        glEnd();
+
+        glPopMatrix();
+        glMatrixMode(GL_PROJECTION);
+        glPopMatrix();
+        glMatrixMode(GL_MODELVIEW);
+        glEnable(GL_DEPTH_TEST);
+
+        SDL_GL_SwapWindow(window);
+        SDL_Delay(16); // ~60 FPS
+    }
+
+    SDL_SetRelativeMouseMode(SDL_FALSE);
+    if (scene_display_list != 0) glDeleteLists(scene_display_list, 1);
+    if (active_shader_prog != 0 && active_shader_prog != custom_shader_prog) glDeleteProgram(active_shader_prog);
+    if (custom_shader_prog != 0) glDeleteProgram(custom_shader_prog);
+    if (gl_context) SDL_GL_DeleteContext(gl_context);
+    if (window) SDL_DestroyWindow(window);
+    SDL_Quit();
+}
+
+// ==========================================
+// Static Showcase Render & Wait (2D Mode)
 // ==========================================
 static inline void render_and_wait() {
     glEndList();

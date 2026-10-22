@@ -1,0 +1,30 @@
+# ========================================================
+# 3D First-Person World Explorer
+# Built with Custom DSL + OpenGL 2 Pipeline
+# ========================================================
+
+# 1. Window & Sky Atmosphere
+title "3D First-Person POV World (OpenGL 2 Engine)"
+window 900 700
+bg #060614
+
+# 2. Activate 3D First-Person Game Mode
+mode_3d
+
+# 3. 3D Environment: Floor Grid & Perimeter Room Walls
+floor 40 #161a2e #0e1224
+walls 40 5 #0f3460
+
+# 4. 3D Objects & Cubes with Collision Detection
+# Syntax: cube <x> <y> <z> <size> <color>
+cube 0 1 -10 2 gold
+cube -8 1 -6 2 cyan
+cube 8 1 -6 2 magenta
+cube -6 1 6 2 lime
+cube 6 1 6 2 crimson
+
+# 5. Tall Monolith Pillars
+# Syntax: pillar <x> <z> <width> <height> <color>
+pillar -12 0 2 5 #e94560
+pillar 12 0 2 5 #00adb5
+pillar 0 12 2 5 #f39c12

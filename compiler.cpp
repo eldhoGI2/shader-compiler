@@ -16,8 +16,9 @@ enum TokenType {
     // Window & Environment
     TOKEN_WINDOW, TOKEN_TITLE, TOKEN_BG, TOKEN_SHADER, TOKEN_CUSTOM_SHADER,
     
-    // Interactive Game Mode (Pong)
+    // Interactive Game Modes
     TOKEN_PONG, TOKEN_PADDLE, TOKEN_AI_PADDLE, TOKEN_BALL,
+    TOKEN_3D, TOKEN_FLOOR, TOKEN_WALLS, TOKEN_CUBE, TOKEN_PILLAR,
 
     // Transformations
     TOKEN_ROTATE, TOKEN_TRANSLATE, TOKEN_SCALE,
@@ -248,11 +249,18 @@ vector<Token> lexer(const string& source) {
         else if (low == "shader") tokens.push_back({TOKEN_SHADER, word});
         else if (low == "custom_shader" || low == "load_shader") tokens.push_back({TOKEN_CUSTOM_SHADER, word});
 
-        // Game Mode (Pong)
+        // 2D Game Mode (Pong)
         else if (low == "pong" || low == "game_pong" || low == "play_pong") tokens.push_back({TOKEN_PONG, word});
         else if (low == "paddle") tokens.push_back({TOKEN_PADDLE, word});
         else if (low == "ai_paddle") tokens.push_back({TOKEN_AI_PADDLE, word});
         else if (low == "ball") tokens.push_back({TOKEN_BALL, word});
+
+        // 3D First-Person Environment Mode
+        else if (low == "3d" || low == "game_3d" || low == "mode_3d" || low == "walk_3d") tokens.push_back({TOKEN_3D, word});
+        else if (low == "floor") tokens.push_back({TOKEN_FLOOR, word});
+        else if (low == "walls" || low == "room") tokens.push_back({TOKEN_WALLS, word});
+        else if (low == "cube" || low == "box") tokens.push_back({TOKEN_CUBE, word});
+        else if (low == "pillar" || low == "column") tokens.push_back({TOKEN_PILLAR, word});
 
         // Transformations
         else if (low == "rotate") tokens.push_back({TOKEN_ROTATE, word});
@@ -327,13 +335,16 @@ void parse_and_generate(const vector<Token>& tokens) {
     string window_title = "Shader Program Compiler (OpenGL 2)";
     bool window_created = false;
     bool is_pong_mode = false;
+    bool is_3d_mode = false;
 
-    // Check if pong mode or title is specified
+    // Scan for titles and game mode markers
     for (size_t i = 0; i < tokens.size(); i++) {
         if (tokens[i].type == TOKEN_TITLE && i + 1 < tokens.size()) {
             window_title = tokens[i + 1].value;
         } else if (tokens[i].type == TOKEN_PONG) {
             is_pong_mode = true;
+        } else if (tokens[i].type == TOKEN_3D) {
+            is_3d_mode = true;
         }
     }
 
@@ -374,12 +385,57 @@ void parse_and_generate(const vector<Token>& tokens) {
             i += 1;
         }
 
+        // 3D Commands
+        else if (t == TOKEN_3D) {
+            is_3d_mode = true;
+        }
+        else if (t == TOKEN_FLOOR) {
+            string size = tokens[i+1].value;
+            size_t next_idx = i + 2;
+            ColorRGB c1 = parse_color_token(tokens, next_idx);
+            ColorRGB c2 = parse_color_token(tokens, next_idx);
+            out_file << "    set_3d_floor(" << size << ", "
+                     << c1.r << ", " << c1.g << ", " << c1.b << ", "
+                     << c2.r << ", " << c2.g << ", " << c2.b << ");" << endl;
+            i = next_idx - 1;
+        }
+        else if (t == TOKEN_WALLS) {
+            string size = tokens[i+1].value;
+            string height = tokens[i+2].value;
+            size_t next_idx = i + 3;
+            ColorRGB c = parse_color_token(tokens, next_idx);
+            out_file << "    set_3d_walls(" << size << ", " << height << ", "
+                     << c.r << ", " << c.g << ", " << c.b << ");" << endl;
+            i = next_idx - 1;
+        }
+        else if (t == TOKEN_CUBE) {
+            string x = tokens[i+1].value;
+            string y = tokens[i+2].value;
+            string z = tokens[i+3].value;
+            string size = tokens[i+4].value;
+            size_t next_idx = i + 5;
+            ColorRGB c = parse_color_token(tokens, next_idx);
+            out_file << "    add_3d_cube(" << x << ", " << y << ", " << z << ", " << size << ", "
+                     << c.r << ", " << c.g << ", " << c.b << ");" << endl;
+            i = next_idx - 1;
+        }
+        else if (t == TOKEN_PILLAR) {
+            string x = tokens[i+1].value;
+            string z = tokens[i+2].value;
+            string w = tokens[i+3].value;
+            string h = tokens[i+4].value;
+            size_t next_idx = i + 5;
+            ColorRGB c = parse_color_token(tokens, next_idx);
+            out_file << "    add_3d_pillar(" << x << ", " << z << ", " << w << ", " << h << ", "
+                     << c.r << ", " << c.g << ", " << c.b << ");" << endl;
+            i = next_idx - 1;
+        }
+
         // Pong Configuration Commands
         else if (t == TOKEN_PONG) {
-            // Marker handled
+            is_pong_mode = true;
         }
         else if (t == TOKEN_PADDLE) {
-            // Check if 4 numbers (x, y, w, h)
             if (i + 4 < tokens.size() && is_number_str(tokens[i+1].value) && is_number_str(tokens[i+2].value) &&
                 is_number_str(tokens[i+3].value) && is_number_str(tokens[i+4].value)) {
                 out_file << "    set_pong_paddle(" << tokens[i+1].value << ", " << tokens[i+2].value 
@@ -663,7 +719,9 @@ void parse_and_generate(const vector<Token>& tokens) {
         out_file << "    create_window_with_title(800, 600, \"" << window_title << "\");" << endl;
     }
 
-    if (is_pong_mode) {
+    if (is_3d_mode) {
+        out_file << "    run_3d_game();" << endl;
+    } else if (is_pong_mode) {
         out_file << "    run_pong_game();" << endl;
     } else {
         out_file << "    render_and_wait();" << endl;
@@ -679,7 +737,7 @@ void parse_and_generate(const vector<Token>& tokens) {
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         cout << "==========================================================" << endl;
-        cout << "   Shader Program Compiler (OpenGL 2 + Custom DSL)        " << endl;
+        cout << "   Shader Program Compiler (OpenGL 2 + 3D Engine DSL)     " << endl;
         cout << "==========================================================" << endl;
         cout << "Usage: ./mycompiler <filename.my>" << endl;
         return 1;
@@ -703,7 +761,8 @@ int main(int argc, char* argv[]) {
     cout << "[COMPILER] Generated OpenGL 2 C code: generated_game.c" << endl;
     cout << "[COMPILER] Handing off to GCC to build native OpenGL 2 graphics executable..." << endl;
 
-    int result = system("gcc generated_game.c -o final_game -lSDL2 -lGL -lm");
+    // Link SDL2, OpenGL (GL), GLU (3D matrices & perspective), and Math library (m)
+    int result = system("gcc generated_game.c -o final_game -lSDL2 -lGL -lGLU -lm");
 
     if (result == 0) {
         cout << "[COMPILER] SUCCESS! Run your program with: ./final_game" << endl;
