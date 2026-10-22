@@ -14,8 +14,15 @@ using namespace std;
 // ==========================================
 enum TokenType {
     // Window & Environment
-    TOKEN_WINDOW, TOKEN_TITLE, TOKEN_BG, TOKEN_SHADER,
+    TOKEN_WINDOW, TOKEN_TITLE, TOKEN_BG, TOKEN_SHADER, TOKEN_CUSTOM_SHADER,
     
+    // Transformations
+    TOKEN_ROTATE, TOKEN_TRANSLATE, TOKEN_SCALE,
+    TOKEN_PUSH, TOKEN_POP, TOKEN_RESET_TRANSFORM,
+
+    // Gradients
+    TOKEN_GRADIENT_RECT, TOKEN_GRADIENT_H_RECT, TOKEN_GRADIENT_TRIANGLE,
+
     // Shapes - Rectangles & Squares
     TOKEN_RECTANGLE, TOKEN_RECT_OUTLINE,
     TOKEN_CENTER_RECT, TOKEN_CENTER_RECT_OUTLINE,
@@ -107,7 +114,7 @@ static bool is_number_str(const string& s) {
     size_t start = 0;
     if (s[0] == '-' && s.length() > 1) start = 1;
     for (size_t i = start; i < s.length(); i++) {
-        if (!isdigit(s[i])) return false;
+        if (!isdigit(s[i]) && s[i] != '.') return false;
     }
     return true;
 }
@@ -156,6 +163,33 @@ static bool parse_hex_color(string s, ColorRGB &c) {
     return false;
 }
 
+static ColorRGB parse_color_token(const vector<Token>& tokens, size_t &idx) {
+    ColorRGB c = {255, 255, 255, 255};
+    if (idx >= tokens.size()) return c;
+
+    string val = to_lower_str(tokens[idx].value);
+    if (COLOR_TABLE.count(val)) {
+        c = COLOR_TABLE.at(val);
+        idx++;
+    } else if (parse_hex_color(tokens[idx].value, c)) {
+        idx++;
+    } else if (is_number_str(tokens[idx].value)) {
+        int r = stoi(tokens[idx].value);
+        int g = (idx + 1 < tokens.size() && is_number_str(tokens[idx+1].value)) ? stoi(tokens[idx+1].value) : 0;
+        int b = (idx + 2 < tokens.size() && is_number_str(tokens[idx+2].value)) ? stoi(tokens[idx+2].value) : 0;
+        int a = 255;
+        idx += 3;
+        if (idx < tokens.size() && is_number_str(tokens[idx].value)) {
+            a = stoi(tokens[idx].value);
+            idx++;
+        }
+        c = {r, g, b, a};
+    } else {
+        idx++;
+    }
+    return c;
+}
+
 // ==========================================
 // 2. LEXER
 // ==========================================
@@ -167,15 +201,11 @@ vector<Token> lexer(const string& source) {
     while (i < n) {
         char c = source[i];
 
-        // 1. Skip whitespace
         if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
             i++;
             continue;
         }
 
-        // 2. Comments:
-        // "//" is always a comment.
-        // "#" is a comment UNLESS it is a hex color literal (#ff0000)
         if ((c == '/' && i + 1 < n && source[i + 1] == '/') ||
             (c == '#' && !is_hex_color_literal(source, i))) {
             while (i < n && source[i] != '\n') {
@@ -184,7 +214,6 @@ vector<Token> lexer(const string& source) {
             continue;
         }
 
-        // 3. String literals ("title in quotes")
         if (c == '"') {
             i++;
             string str_val = "";
@@ -197,10 +226,8 @@ vector<Token> lexer(const string& source) {
             continue;
         }
 
-        // 4. Words, Hex Literals, & Numbers
         string word = "";
         while (i < n && source[i] != ' ' && source[i] != '\t' && source[i] != '\r' && source[i] != '\n') {
-            // Stop if inline comment starts
             if (source[i] == '/' && i + 1 < n && source[i + 1] == '/') break;
             if (source[i] == '#' && !is_hex_color_literal(source, i)) break;
 
@@ -212,11 +239,24 @@ vector<Token> lexer(const string& source) {
 
         string low = to_lower_str(word);
 
-        // Keywords matching
         if (low == "window") tokens.push_back({TOKEN_WINDOW, word});
         else if (low == "title") tokens.push_back({TOKEN_TITLE, word});
         else if (low == "bg" || low == "background") tokens.push_back({TOKEN_BG, word});
         else if (low == "shader") tokens.push_back({TOKEN_SHADER, word});
+        else if (low == "custom_shader" || low == "load_shader") tokens.push_back({TOKEN_CUSTOM_SHADER, word});
+
+        // Transformations
+        else if (low == "rotate") tokens.push_back({TOKEN_ROTATE, word});
+        else if (low == "translate") tokens.push_back({TOKEN_TRANSLATE, word});
+        else if (low == "scale") tokens.push_back({TOKEN_SCALE, word});
+        else if (low == "push" || low == "push_transform") tokens.push_back({TOKEN_PUSH, word});
+        else if (low == "pop" || low == "pop_transform") tokens.push_back({TOKEN_POP, word});
+        else if (low == "reset_transform") tokens.push_back({TOKEN_RESET_TRANSFORM, word});
+
+        // Gradients
+        else if (low == "gradient_rect") tokens.push_back({TOKEN_GRADIENT_RECT, word});
+        else if (low == "gradient_h_rect") tokens.push_back({TOKEN_GRADIENT_H_RECT, word});
+        else if (low == "gradient_triangle") tokens.push_back({TOKEN_GRADIENT_TRIANGLE, word});
 
         // Rectangles & Squares
         else if (low == "rect" || low == "rectangle") tokens.push_back({TOKEN_RECTANGLE, word});
@@ -258,7 +298,7 @@ vector<Token> lexer(const string& source) {
         else if (low == "color" || low == "colour") tokens.push_back({TOKEN_COLOR, word});
         else if (low == "alpha") tokens.push_back({TOKEN_ALPHA, word});
 
-        // Literals: Number or Word/Color/Hex
+        // Literals
         else if (is_number_str(word)) tokens.push_back({TOKEN_NUMBER, word});
         else tokens.push_back({TOKEN_WORD, word});
     }
@@ -278,7 +318,6 @@ void parse_and_generate(const vector<Token>& tokens) {
     string window_title = "Shader Program Compiler (OpenGL 2)";
     bool window_created = false;
 
-    // Scan ahead to find if a custom window title is defined
     for (size_t i = 0; i < tokens.size(); i++) {
         if (tokens[i].type == TOKEN_TITLE && i + 1 < tokens.size()) {
             window_title = tokens[i + 1].value;
@@ -318,6 +357,85 @@ void parse_and_generate(const vector<Token>& tokens) {
             out_file << "    set_shader(\"" << shader_name << "\");" << endl;
             i += 1;
         }
+        else if (t == TOKEN_CUSTOM_SHADER) {
+            out_file << "    load_custom_shader_file(\"" << tokens[i+1].value << "\");" << endl;
+            i += 1;
+        }
+
+        // Transformations
+        else if (t == TOKEN_ROTATE) {
+            out_file << "    apply_rotate(" << tokens[i+1].value << ");" << endl;
+            i += 1;
+        }
+        else if (t == TOKEN_TRANSLATE) {
+            out_file << "    apply_translate(" << tokens[i+1].value << ", " << tokens[i+2].value << ");" << endl;
+            i += 2;
+        }
+        else if (t == TOKEN_SCALE) {
+            out_file << "    apply_scale(" << tokens[i+1].value << ", " << tokens[i+2].value << ");" << endl;
+            i += 2;
+        }
+        else if (t == TOKEN_PUSH) {
+            out_file << "    push_transform();" << endl;
+        }
+        else if (t == TOKEN_POP) {
+            out_file << "    pop_transform();" << endl;
+        }
+        else if (t == TOKEN_RESET_TRANSFORM) {
+            out_file << "    reset_transform();" << endl;
+        }
+
+        // Gradients
+        else if (t == TOKEN_GRADIENT_RECT) {
+            string x = tokens[i+1].value;
+            string y = tokens[i+2].value;
+            string w = tokens[i+3].value;
+            string h = tokens[i+4].value;
+            size_t next_idx = i + 5;
+            ColorRGB c1 = parse_color_token(tokens, next_idx);
+            ColorRGB c2 = parse_color_token(tokens, next_idx);
+            out_file << "    draw_gradient_rect(" << x << ", " << y << ", " << w << ", " << h << ", "
+                     << c1.r << ", " << c1.g << ", " << c1.b << ", " << c1.a << ", "
+                     << c2.r << ", " << c2.g << ", " << c2.b << ", " << c2.a << ");" << endl;
+            i = next_idx - 1;
+        }
+        else if (t == TOKEN_GRADIENT_H_RECT) {
+            string x = tokens[i+1].value;
+            string y = tokens[i+2].value;
+            string w = tokens[i+3].value;
+            string h = tokens[i+4].value;
+            size_t next_idx = i + 5;
+            ColorRGB c1 = parse_color_token(tokens, next_idx);
+            ColorRGB c2 = parse_color_token(tokens, next_idx);
+            out_file << "    draw_gradient_h_rect(" << x << ", " << y << ", " << w << ", " << h << ", "
+                     << c1.r << ", " << c1.g << ", " << c1.b << ", " << c1.a << ", "
+                     << c2.r << ", " << c2.g << ", " << c2.b << ", " << c2.a << ");" << endl;
+            i = next_idx - 1;
+        }
+        else if (t == TOKEN_GRADIENT_TRIANGLE) {
+            string x1 = tokens[i+1].value;
+            string y1 = tokens[i+2].value;
+            size_t next_idx = i + 3;
+            ColorRGB c1 = parse_color_token(tokens, next_idx);
+            string x2 = tokens[next_idx].value;
+            string y2 = tokens[next_idx+1].value;
+            next_idx += 2;
+            ColorRGB c2 = parse_color_token(tokens, next_idx);
+            string x3 = tokens[next_idx].value;
+            string y3 = tokens[next_idx+1].value;
+            next_idx += 2;
+            ColorRGB c3 = parse_color_token(tokens, next_idx);
+
+            out_file << "    draw_gradient_triangle(" << x1 << ", " << y1 << ", " 
+                     << c1.r << ", " << c1.g << ", " << c1.b << ", " << c1.a << ", "
+                     << x2 << ", " << y2 << ", "
+                     << c2.r << ", " << c2.g << ", " << c2.b << ", " << c2.a << ", "
+                     << x3 << ", " << y3 << ", "
+                     << c3.r << ", " << c3.g << ", " << c3.b << ", " << c3.a << ");" << endl;
+            i = next_idx - 1;
+        }
+
+        // Colors & Alpha
         else if (t == TOKEN_COLOR) {
             string val = to_lower_str(tokens[i+1].value);
             ColorRGB c;

@@ -1,0 +1,74 @@
+# ========================================================
+# Cyberpunk / Synthwave Demo Script
+# Demonstrating: Custom Shaders, Gradients, and Transformations
+# ========================================================
+
+title "Cyberpunk Matrix (OpenGL 2 + Custom Shader)"
+window 900 700
+bg #050510
+
+# Load our custom external GLSL plasma fragment shader!
+custom_shader plasma.frag
+
+# 1. Gradient Sky & Sun
+gradient_rect 50 50 800 250 #00ffff #ff007f
+
+# Draw an iconic synthwave sun at the horizon
+color #ffea00
+fill_circle 450 300 90
+
+color #ff007f
+alpha 180
+fill_circle 450 300 75
+
+# 2. Glowing synthwave sun horizontal cuts
+color #050510
+line_width 4
+line 360 270 540 270
+line 370 290 530 290
+line 390 310 510 310
+line 410 330 490 330
+
+# 3. Horizon Ground with Horizontal Gradient
+gradient_h_rect 50 390 800 240 #800080 #00ffff
+
+# Perspective Grid Lines
+color #00ffff
+line_width 2
+line 450 390 100 630
+line 450 390 250 630
+line 450 390 450 630
+line 450 390 650 630
+line 450 390 800 630
+
+line 100 440 800 440
+line 100 490 800 490
+line 100 550 800 550
+line 100 620 800 620
+
+# 4. Classic OpenGL RGB Gradient Triangle
+gradient_triangle 160 320 red 220 220 lime 280 320 blue
+
+# 5. Rotated & Transformed Diamonds
+push
+translate 700 200
+rotate 45
+color cyan
+square_outline -40 -40 80
+color magenta
+alpha 160
+fill_square -25 -25 50
+pop
+
+push
+translate 700 200
+rotate 15
+color gold
+line_width 2
+star 0 0 50 20 6
+pop
+
+# 6. Framed Card Border
+color #00ffff
+line_width 3
+rounded_rect_outline 40 40 820 600 16
