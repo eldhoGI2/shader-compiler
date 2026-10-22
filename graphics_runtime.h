@@ -26,7 +26,7 @@ static GLuint active_shader_prog = 0;
 static bool has_shader = false;
 
 // Shader cycling state
-static int current_shader_idx = 0; // 0=none, 1=grid, 2=rainbow, 3=pulse, 4=vignette, 5=custom
+static int current_shader_idx = 0;
 static GLuint custom_shader_prog = 0;
 
 // Active rendering color (RGBA)
@@ -39,6 +39,38 @@ static uint8_t cur_a = 255;
 static float bg_r = 0.0f;
 static float bg_g = 0.0f;
 static float bg_b = 0.0f;
+
+// ==========================================
+// Pong Game State Variables
+// ==========================================
+static float pong_paddle_x = 40.0f;
+static float pong_paddle_y = 250.0f;
+static float pong_paddle_w = 18.0f;
+static float pong_paddle_h = 100.0f;
+static float pong_paddle_speed = 7.5f;
+static uint8_t pong_paddle_r = 0, pong_paddle_g = 255, pong_paddle_b = 255; // Cyan
+
+static float pong_ai_x = 742.0f;
+static float pong_ai_y = 250.0f;
+static float pong_ai_w = 18.0f;
+static float pong_ai_h = 100.0f;
+static float pong_ai_speed = 5.2f;
+static uint8_t pong_ai_r = 255, pong_ai_g = 0, pong_ai_b = 255; // Magenta
+
+static float pong_ball_x = 400.0f;
+static float pong_ball_y = 300.0f;
+static float pong_ball_radius = 10.0f;
+static float pong_ball_vx = 6.0f;
+static float pong_ball_vy = 3.0f;
+static uint8_t pong_ball_r = 255, pong_ball_g = 215, pong_ball_b = 0; // Gold
+
+static int pong_score_player = 0;
+static int pong_score_ai = 0;
+
+// 7-Segment Display Bitmasks (0-9)
+static const uint8_t DIGITS[10] = {
+    0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F
+};
 
 // ==========================================
 // GLSL Shader Helper Functions
@@ -162,7 +194,6 @@ static inline void set_shader(const char* name) {
     }
 }
 
-// Load custom GLSL fragment shader from external file
 static inline void load_custom_shader_file(const char* filepath) {
     FILE* f = fopen(filepath, "rb");
     if (!f) {
@@ -193,36 +224,17 @@ static inline void load_custom_shader_file(const char* filepath) {
     }
 }
 
-// Cycle shaders at runtime via Spacebar
 static inline void cycle_next_shader() {
     int max_idx = (custom_shader_prog != 0) ? 5 : 4;
     current_shader_idx = (current_shader_idx + 1) % (max_idx + 1);
 
     switch (current_shader_idx) {
-        case 0:
-            set_shader("none");
-            printf("[SHADER CYCLED] Mode: NONE (Clean Background)\n");
-            break;
-        case 1:
-            set_shader("grid");
-            printf("[SHADER CYCLED] Mode: GRID (Cyberpunk Matrix)\n");
-            break;
-        case 2:
-            set_shader("rainbow");
-            printf("[SHADER CYCLED] Mode: RAINBOW (Flowing Chromatic Wave)\n");
-            break;
-        case 3:
-            set_shader("pulse");
-            printf("[SHADER CYCLED] Mode: PULSE (Neon Energy Ring)\n");
-            break;
-        case 4:
-            set_shader("vignette");
-            printf("[SHADER CYCLED] Mode: VIGNETTE (Cinematic Dark Edges)\n");
-            break;
-        case 5:
-            set_shader("custom");
-            printf("[SHADER CYCLED] Mode: CUSTOM (External User GLSL Shader)\n");
-            break;
+        case 0: set_shader("none"); printf("[SHADER] NONE\n"); break;
+        case 1: set_shader("grid"); printf("[SHADER] GRID (Cyberpunk Matrix)\n"); break;
+        case 2: set_shader("rainbow"); printf("[SHADER] RAINBOW (Chromatic Wave)\n"); break;
+        case 3: set_shader("pulse"); printf("[SHADER] PULSE (Neon Energy Ring)\n"); break;
+        case 4: set_shader("vignette"); printf("[SHADER] VIGNETTE (Cinematic Edge)\n"); break;
+        case 5: set_shader("custom"); printf("[SHADER] CUSTOM (External GLSL)\n"); break;
     }
 }
 
@@ -347,7 +359,6 @@ static inline void reset_transform() {
 // ==========================================
 // Color Gradients
 // ==========================================
-// Vertical Gradient Rectangle (top to bottom)
 static inline void draw_gradient_rect(int x, int y, int w, int h,
                                       int r1, int g1, int b1, int a1,
                                       int r2, int g2, int b2, int a2) {
@@ -363,7 +374,6 @@ static inline void draw_gradient_rect(int x, int y, int w, int h,
     glColor4ub(cur_r, cur_g, cur_b, cur_a);
 }
 
-// Horizontal Gradient Rectangle (left to right)
 static inline void draw_gradient_h_rect(int x, int y, int w, int h,
                                         int r1, int g1, int b1, int a1,
                                         int r2, int g2, int b2, int a2) {
@@ -381,7 +391,6 @@ static inline void draw_gradient_h_rect(int x, int y, int w, int h,
     glColor4ub(cur_r, cur_g, cur_b, cur_a);
 }
 
-// Multi-color Gradient Triangle
 static inline void draw_gradient_triangle(int x1, int y1, int r1, int g1, int b1, int a1,
                                           int x2, int y2, int r2, int g2, int b2, int a2,
                                           int x3, int y3, int r3, int g3, int b3, int a3) {
@@ -447,7 +456,6 @@ static inline void draw_center_square_outline(int size) {
     draw_center_rect_outline(size, size);
 }
 
-// Rounded Rectangle
 static inline void draw_fill_rounded_rect(int x, int y, int w, int h, int radius) {
     if (radius <= 0) { draw_rectangle(x, y, w, h); return; }
     int max_r = (w < h ? w : h) / 2;
@@ -643,9 +651,6 @@ static inline void draw_fill_star(int cx, int cy, int outer_r, int inner_r, int 
     glEnd();
 }
 
-// ==========================================
-// Shapes - Lines & Points
-// ==========================================
 static inline void draw_line(int x1, int y1, int x2, int y2) {
     glBegin(GL_LINES);
     glVertex2f((float)x1, (float)y1);
@@ -660,7 +665,287 @@ static inline void draw_point(int x, int y) {
 }
 
 // ==========================================
-// Main Presentation & Interactive Event Loop
+// Digital 7-Segment Score Display
+// ==========================================
+static inline void draw_digital_digit(float x, float y, int digit, float size) {
+    if (digit < 0 || digit > 9) return;
+    uint8_t mask = DIGITS[digit];
+    float w = size * 0.55f;
+    float h = size;
+    float t = size * 0.12f;
+
+    glBegin(GL_QUADS);
+    if (mask & 0x01) { // 0: Top
+        glVertex2f(x + t, y); glVertex2f(x + w - t, y);
+        glVertex2f(x + w - t, y + t); glVertex2f(x + t, y + t);
+    }
+    if (mask & 0x02) { // 1: Top-Right
+        glVertex2f(x + w - t, y + t); glVertex2f(x + w, y + t);
+        glVertex2f(x + w, y + h * 0.5f); glVertex2f(x + w - t, y + h * 0.5f);
+    }
+    if (mask & 0x04) { // 2: Bottom-Right
+        glVertex2f(x + w - t, y + h * 0.5f); glVertex2f(x + w, y + h * 0.5f);
+        glVertex2f(x + w, y + h - t); glVertex2f(x + w - t, y + h - t);
+    }
+    if (mask & 0x08) { // 3: Bottom
+        glVertex2f(x + t, y + h - t); glVertex2f(x + w - t, y + h - t);
+        glVertex2f(x + w - t, y + h); glVertex2f(x + t, y + h);
+    }
+    if (mask & 0x10) { // 4: Bottom-Left
+        glVertex2f(x, y + h * 0.5f); glVertex2f(x + t, y + h * 0.5f);
+        glVertex2f(x + t, y + h - t); glVertex2f(x, y + h - t);
+    }
+    if (mask & 0x20) { // 5: Top-Left
+        glVertex2f(x, y + t); glVertex2f(x + t, y + t);
+        glVertex2f(x + t, y + h * 0.5f); glVertex2f(x, y + h * 0.5f);
+    }
+    if (mask & 0x40) { // 6: Middle
+        glVertex2f(x + t, y + h * 0.5f - t * 0.5f); glVertex2f(x + w - t, y + h * 0.5f - t * 0.5f);
+        glVertex2f(x + w - t, y + h * 0.5f + t * 0.5f); glVertex2f(x + t, y + h * 0.5f + t * 0.5f);
+    }
+    glEnd();
+}
+
+static inline void draw_digital_number(float x, float y, int number, float size) {
+    if (number < 0) number = 0;
+    if (number >= 10) {
+        draw_digital_digit(x - size * 0.65f, y, (number / 10) % 10, size);
+    }
+    draw_digital_digit(x, y, number % 10, size);
+}
+
+// ==========================================
+// Pong Configuration Setters (from DSL)
+// ==========================================
+static inline void set_pong_paddle(int x, int y, int w, int h) {
+    pong_paddle_x = (float)x; pong_paddle_y = (float)y;
+    pong_paddle_w = (float)w; pong_paddle_h = (float)h;
+}
+
+static inline void set_pong_paddle_color(int r, int g, int b) {
+    pong_paddle_r = (uint8_t)r; pong_paddle_g = (uint8_t)g; pong_paddle_b = (uint8_t)b;
+}
+
+static inline void set_pong_ai(int x, int y, int w, int h) {
+    pong_ai_x = (float)x; pong_ai_y = (float)y;
+    pong_ai_w = (float)w; pong_ai_h = (float)h;
+}
+
+static inline void set_pong_ai_color(int r, int g, int b) {
+    pong_ai_r = (uint8_t)r; pong_ai_g = (uint8_t)g; pong_ai_b = (uint8_t)b;
+}
+
+static inline void set_pong_ball(int x, int y, int radius) {
+    pong_ball_x = (float)x; pong_ball_y = (float)y;
+    pong_ball_radius = (float)radius;
+}
+
+static inline void set_pong_ball_color(int r, int g, int b) {
+    pong_ball_r = (uint8_t)r; pong_ball_g = (uint8_t)g; pong_ball_b = (uint8_t)b;
+}
+
+static inline void pong_reset_ball(int direction) {
+    pong_ball_x = screen_width * 0.5f;
+    pong_ball_y = screen_height * 0.5f;
+    pong_ball_vx = direction * 6.5f;
+    pong_ball_vy = (((rand() % 100) / 50.0f) - 1.0f) * 4.0f;
+    if (fabsf(pong_ball_vy) < 1.5f) {
+        pong_ball_vy = (pong_ball_vy < 0 ? -2.5f : 2.5f);
+    }
+}
+
+// ==========================================
+// Interactive Pong Game Loop
+// ==========================================
+static inline void run_pong_game() {
+    glEndList();
+
+    // Auto-adjust positions if screen dimensions were customized
+    pong_ai_x = screen_width - pong_paddle_x - pong_ai_w;
+
+    printf("\n=======================================================\n");
+    printf("   🏓 PONG GAME RUNNING (OpenGL 2 + DSL)              \n");
+    printf("   - Player 1: [W] / [S] or [UP] / [DOWN] to Move     \n");
+    printf("   - Press [SPACE] to cycle live OpenGL 2 shaders!    \n");
+    printf("   - Press [R] to reset score                         \n");
+    printf("   - Press [ESC] to exit                              \n");
+    printf("=======================================================\n\n");
+
+    bool running = true;
+    SDL_Event event;
+
+    while (running) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) {
+                running = false;
+            } else if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_q) {
+                    running = false;
+                } else if (event.key.keysym.sym == SDLK_SPACE) {
+                    cycle_next_shader();
+                } else if (event.key.keysym.sym == SDLK_r) {
+                    pong_score_player = 0;
+                    pong_score_ai = 0;
+                    pong_reset_ball(1);
+                    printf("[PONG] Scores reset!\n");
+                }
+            }
+        }
+
+        // 1. Continuous Keyboard Input (Player Movement)
+        const Uint8* keys = SDL_GetKeyboardState(NULL);
+        if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP]) {
+            pong_paddle_y -= pong_paddle_speed;
+        }
+        if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN]) {
+            pong_paddle_y += pong_paddle_speed;
+        }
+
+        // Clamp Player Paddle inside window
+        if (pong_paddle_y < 12.0f) pong_paddle_y = 12.0f;
+        if (pong_paddle_y + pong_paddle_h > screen_height - 12.0f) {
+            pong_paddle_y = screen_height - 12.0f - pong_paddle_h;
+        }
+
+        // 2. Simple Smooth AI Paddle Logic
+        float ai_center = pong_ai_y + pong_ai_h * 0.5f;
+        if (ai_center < pong_ball_y - 12.0f) {
+            pong_ai_y += pong_ai_speed;
+        } else if (ai_center > pong_ball_y + 12.0f) {
+            pong_ai_y -= pong_ai_speed;
+        }
+        if (pong_ai_y < 12.0f) pong_ai_y = 12.0f;
+        if (pong_ai_y + pong_ai_h > screen_height - 12.0f) {
+            pong_ai_y = screen_height - 12.0f - pong_ai_h;
+        }
+
+        // 3. Ball Physics & Collision Detection
+        pong_ball_x += pong_ball_vx;
+        pong_ball_y += pong_ball_vy;
+
+        // Top & Bottom Boundary Collision
+        if (pong_ball_y - pong_ball_radius <= 8.0f) {
+            pong_ball_y = 8.0f + pong_ball_radius;
+            pong_ball_vy = -pong_ball_vy;
+        } else if (pong_ball_y + pong_ball_radius >= screen_height - 8.0f) {
+            pong_ball_y = screen_height - 8.0f - pong_ball_radius;
+            pong_ball_vy = -pong_ball_vy;
+        }
+
+        // Left Paddle Collision (Player) - Circle vs AABB Bounding Box
+        if (pong_ball_vx < 0.0f &&
+            pong_ball_x - pong_ball_radius <= pong_paddle_x + pong_paddle_w &&
+            pong_ball_x + pong_ball_radius >= pong_paddle_x &&
+            pong_ball_y >= pong_paddle_y - pong_ball_radius &&
+            pong_ball_y <= pong_paddle_y + pong_paddle_h + pong_ball_radius) {
+
+            pong_ball_x = pong_paddle_x + pong_paddle_w + pong_ball_radius;
+            pong_ball_vx = -pong_ball_vx * 1.05f; // Slight acceleration per hit
+            float hit_offset = (pong_ball_y - (pong_paddle_y + pong_paddle_h * 0.5f)) / (pong_paddle_h * 0.5f);
+            pong_ball_vy = hit_offset * 6.5f;
+        }
+
+        // Right Paddle Collision (AI) - Circle vs AABB Bounding Box
+        if (pong_ball_vx > 0.0f &&
+            pong_ball_x + pong_ball_radius >= pong_ai_x &&
+            pong_ball_x - pong_ball_radius <= pong_ai_x + pong_ai_w &&
+            pong_ball_y >= pong_ai_y - pong_ball_radius &&
+            pong_ball_y <= pong_ai_y + pong_ai_h + pong_ball_radius) {
+
+            pong_ball_x = pong_ai_x - pong_ball_radius;
+            pong_ball_vx = -pong_ball_vx * 1.05f;
+            float hit_offset = (pong_ball_y - (pong_ai_y + pong_ai_h * 0.5f)) / (pong_ai_h * 0.5f);
+            pong_ball_vy = hit_offset * 6.5f;
+        }
+
+        // Scoring & Ball Reset
+        if (pong_ball_x < 0.0f) {
+            pong_score_ai++;
+            printf("[GOAL] Computer scored! (%d - %d)\n", pong_score_player, pong_score_ai);
+            pong_reset_ball(1);
+        } else if (pong_ball_x > screen_width) {
+            pong_score_player++;
+            printf("[GOAL] Player scored! (%d - %d)\n", pong_score_player, pong_score_ai);
+            pong_reset_ball(-1);
+        }
+
+        // 4. Render Stage
+        glClearColor(bg_r, bg_g, bg_b, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        // A. Background Shader (if active)
+        if (has_shader && active_shader_prog != 0) {
+            glUseProgram(active_shader_prog);
+            GLint loc_time = glGetUniformLocation(active_shader_prog, "u_time");
+            GLint loc_res = glGetUniformLocation(active_shader_prog, "u_resolution");
+            if (loc_time != -1) {
+                float current_time = (float)SDL_GetTicks() / 1000.0f;
+                glUniform1f(loc_time, current_time);
+            }
+            if (loc_res != -1) {
+                glUniform2f(loc_res, (float)screen_width, (float)screen_height);
+            }
+
+            glBegin(GL_QUADS);
+            glVertex2f(0.0f, 0.0f);
+            glVertex2f((float)screen_width, 0.0f);
+            glVertex2f((float)screen_width, (float)screen_height);
+            glVertex2f(0.0f, (float)screen_height);
+            glEnd();
+            glUseProgram(0);
+        }
+
+        // B. Replay any custom user-drawn decorations from DSL
+        glCallList(scene_display_list);
+
+        // C. Center Court Dotted Net
+        glColor4ub(255, 255, 255, 90);
+        float net_x = screen_width * 0.5f - 2.0f;
+        for (float y = 10.0f; y < screen_height - 10.0f; y += 30.0f) {
+            draw_rectangle((int)net_x, (int)y, 4, 16);
+        }
+
+        // D. Digital Scoreboards at Top
+        glColor4ub(0, 255, 255, 200); // Player score cyan
+        draw_digital_number(screen_width * 0.35f, 35.0f, pong_score_player, 40.0f);
+
+        glColor4ub(255, 0, 255, 200); // AI score magenta
+        draw_digital_number(screen_width * 0.65f, 35.0f, pong_score_ai, 40.0f);
+
+        // E. Draw Player Paddle (Rounded Rect)
+        glColor4ub(pong_paddle_r, pong_paddle_g, pong_paddle_b, 255);
+        draw_fill_rounded_rect((int)pong_paddle_x, (int)pong_paddle_y,
+                               (int)pong_paddle_w, (int)pong_paddle_h, 6);
+
+        // F. Draw AI Paddle (Rounded Rect)
+        glColor4ub(pong_ai_r, pong_ai_g, pong_ai_b, 255);
+        draw_fill_rounded_rect((int)pong_ai_x, (int)pong_ai_y,
+                               (int)pong_ai_w, (int)pong_ai_h, 6);
+
+        // G. Draw Ball (Smooth Circle)
+        glColor4ub(pong_ball_r, pong_ball_g, pong_ball_b, 255);
+        draw_fill_circle((int)pong_ball_x, (int)pong_ball_y, (int)pong_ball_radius);
+
+        // H. Top & Bottom Court Border Lines
+        glColor4ub(255, 255, 255, 120);
+        glLineWidth(3.0f);
+        draw_line(0, 4, screen_width, 4);
+        draw_line(0, screen_height - 4, screen_width, screen_height - 4);
+
+        SDL_GL_SwapWindow(window);
+        SDL_Delay(16); // ~60 FPS
+    }
+
+    if (scene_display_list != 0) glDeleteLists(scene_display_list, 1);
+    if (active_shader_prog != 0 && active_shader_prog != custom_shader_prog) glDeleteProgram(active_shader_prog);
+    if (custom_shader_prog != 0) glDeleteProgram(custom_shader_prog);
+    if (gl_context) SDL_GL_DeleteContext(gl_context);
+    if (window) SDL_DestroyWindow(window);
+    SDL_Quit();
+}
+
+// ==========================================
+// Static Showcase Render & Wait
 // ==========================================
 static inline void render_and_wait() {
     glEndList();
@@ -692,10 +977,8 @@ static inline void render_and_wait() {
 
         if (has_shader && active_shader_prog != 0) {
             glUseProgram(active_shader_prog);
-
             GLint loc_time = glGetUniformLocation(active_shader_prog, "u_time");
             GLint loc_res = glGetUniformLocation(active_shader_prog, "u_resolution");
-
             if (loc_time != -1) {
                 float current_time = (float)SDL_GetTicks() / 1000.0f;
                 glUniform1f(loc_time, current_time);
@@ -710,7 +993,6 @@ static inline void render_and_wait() {
             glVertex2f((float)screen_width, (float)screen_height);
             glVertex2f(0.0f, (float)screen_height);
             glEnd();
-
             glUseProgram(0);
         }
 
@@ -720,21 +1002,11 @@ static inline void render_and_wait() {
         SDL_Delay(16);
     }
 
-    if (scene_display_list != 0) {
-        glDeleteLists(scene_display_list, 1);
-    }
-    if (active_shader_prog != 0 && active_shader_prog != custom_shader_prog) {
-        glDeleteProgram(active_shader_prog);
-    }
-    if (custom_shader_prog != 0) {
-        glDeleteProgram(custom_shader_prog);
-    }
-    if (gl_context) {
-        SDL_GL_DeleteContext(gl_context);
-    }
-    if (window) {
-        SDL_DestroyWindow(window);
-    }
+    if (scene_display_list != 0) glDeleteLists(scene_display_list, 1);
+    if (active_shader_prog != 0 && active_shader_prog != custom_shader_prog) glDeleteProgram(active_shader_prog);
+    if (custom_shader_prog != 0) glDeleteProgram(custom_shader_prog);
+    if (gl_context) SDL_GL_DeleteContext(gl_context);
+    if (window) SDL_DestroyWindow(window);
     SDL_Quit();
 }
 

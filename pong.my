@@ -1,0 +1,21 @@
+# ========================================================
+# Cyberpunk Pong - Interactive Game
+# Built with Custom DSL + OpenGL 2 Pipeline
+# ========================================================
+
+# 1. Canvas & Atmosphere Setup
+title "Cyberpunk Pong - Player vs AI (OpenGL 2)"
+window 800 600
+bg #060614
+
+# 2. Dynamic Hardware GLSL Background Shader
+# Tip: Press [SPACE] while playing to cycle shaders!
+shader grid
+
+# 3. Activate Interactive Game Mode
+pong
+
+# 4. Paddle & Ball Customization
+paddle cyan
+ai_paddle magenta
+ball gold

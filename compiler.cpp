@@ -16,6 +16,9 @@ enum TokenType {
     // Window & Environment
     TOKEN_WINDOW, TOKEN_TITLE, TOKEN_BG, TOKEN_SHADER, TOKEN_CUSTOM_SHADER,
     
+    // Interactive Game Mode (Pong)
+    TOKEN_PONG, TOKEN_PADDLE, TOKEN_AI_PADDLE, TOKEN_BALL,
+
     // Transformations
     TOKEN_ROTATE, TOKEN_TRANSLATE, TOKEN_SCALE,
     TOKEN_PUSH, TOKEN_POP, TOKEN_RESET_TRANSFORM,
@@ -245,6 +248,12 @@ vector<Token> lexer(const string& source) {
         else if (low == "shader") tokens.push_back({TOKEN_SHADER, word});
         else if (low == "custom_shader" || low == "load_shader") tokens.push_back({TOKEN_CUSTOM_SHADER, word});
 
+        // Game Mode (Pong)
+        else if (low == "pong" || low == "game_pong" || low == "play_pong") tokens.push_back({TOKEN_PONG, word});
+        else if (low == "paddle") tokens.push_back({TOKEN_PADDLE, word});
+        else if (low == "ai_paddle") tokens.push_back({TOKEN_AI_PADDLE, word});
+        else if (low == "ball") tokens.push_back({TOKEN_BALL, word});
+
         // Transformations
         else if (low == "rotate") tokens.push_back({TOKEN_ROTATE, word});
         else if (low == "translate") tokens.push_back({TOKEN_TRANSLATE, word});
@@ -317,11 +326,14 @@ void parse_and_generate(const vector<Token>& tokens) {
 
     string window_title = "Shader Program Compiler (OpenGL 2)";
     bool window_created = false;
+    bool is_pong_mode = false;
 
+    // Check if pong mode or title is specified
     for (size_t i = 0; i < tokens.size(); i++) {
         if (tokens[i].type == TOKEN_TITLE && i + 1 < tokens.size()) {
             window_title = tokens[i + 1].value;
-            break;
+        } else if (tokens[i].type == TOKEN_PONG) {
+            is_pong_mode = true;
         }
     }
 
@@ -360,6 +372,69 @@ void parse_and_generate(const vector<Token>& tokens) {
         else if (t == TOKEN_CUSTOM_SHADER) {
             out_file << "    load_custom_shader_file(\"" << tokens[i+1].value << "\");" << endl;
             i += 1;
+        }
+
+        // Pong Configuration Commands
+        else if (t == TOKEN_PONG) {
+            // Marker handled
+        }
+        else if (t == TOKEN_PADDLE) {
+            // Check if 4 numbers (x, y, w, h)
+            if (i + 4 < tokens.size() && is_number_str(tokens[i+1].value) && is_number_str(tokens[i+2].value) &&
+                is_number_str(tokens[i+3].value) && is_number_str(tokens[i+4].value)) {
+                out_file << "    set_pong_paddle(" << tokens[i+1].value << ", " << tokens[i+2].value 
+                         << ", " << tokens[i+3].value << ", " << tokens[i+4].value << ");" << endl;
+                i += 4;
+                if (i + 1 < tokens.size() && !is_number_str(tokens[i+1].value)) {
+                    size_t next_idx = i + 1;
+                    ColorRGB pc = parse_color_token(tokens, next_idx);
+                    out_file << "    set_pong_paddle_color(" << pc.r << ", " << pc.g << ", " << pc.b << ");" << endl;
+                    i = next_idx - 1;
+                }
+            } else {
+                size_t next_idx = i + 1;
+                ColorRGB pc = parse_color_token(tokens, next_idx);
+                out_file << "    set_pong_paddle_color(" << pc.r << ", " << pc.g << ", " << pc.b << ");" << endl;
+                i = next_idx - 1;
+            }
+        }
+        else if (t == TOKEN_AI_PADDLE) {
+            if (i + 4 < tokens.size() && is_number_str(tokens[i+1].value) && is_number_str(tokens[i+2].value) &&
+                is_number_str(tokens[i+3].value) && is_number_str(tokens[i+4].value)) {
+                out_file << "    set_pong_ai(" << tokens[i+1].value << ", " << tokens[i+2].value 
+                         << ", " << tokens[i+3].value << ", " << tokens[i+4].value << ");" << endl;
+                i += 4;
+                if (i + 1 < tokens.size() && !is_number_str(tokens[i+1].value)) {
+                    size_t next_idx = i + 1;
+                    ColorRGB ac = parse_color_token(tokens, next_idx);
+                    out_file << "    set_pong_ai_color(" << ac.r << ", " << ac.g << ", " << ac.b << ");" << endl;
+                    i = next_idx - 1;
+                }
+            } else {
+                size_t next_idx = i + 1;
+                ColorRGB ac = parse_color_token(tokens, next_idx);
+                out_file << "    set_pong_ai_color(" << ac.r << ", " << ac.g << ", " << ac.b << ");" << endl;
+                i = next_idx - 1;
+            }
+        }
+        else if (t == TOKEN_BALL) {
+            if (i + 3 < tokens.size() && is_number_str(tokens[i+1].value) && is_number_str(tokens[i+2].value) &&
+                is_number_str(tokens[i+3].value)) {
+                out_file << "    set_pong_ball(" << tokens[i+1].value << ", " << tokens[i+2].value 
+                         << ", " << tokens[i+3].value << ");" << endl;
+                i += 3;
+                if (i + 1 < tokens.size() && !is_number_str(tokens[i+1].value)) {
+                    size_t next_idx = i + 1;
+                    ColorRGB bc = parse_color_token(tokens, next_idx);
+                    out_file << "    set_pong_ball_color(" << bc.r << ", " << bc.g << ", " << bc.b << ");" << endl;
+                    i = next_idx - 1;
+                }
+            } else {
+                size_t next_idx = i + 1;
+                ColorRGB bc = parse_color_token(tokens, next_idx);
+                out_file << "    set_pong_ball_color(" << bc.r << ", " << bc.g << ", " << bc.b << ");" << endl;
+                i = next_idx - 1;
+            }
         }
 
         // Transformations
@@ -588,7 +663,12 @@ void parse_and_generate(const vector<Token>& tokens) {
         out_file << "    create_window_with_title(800, 600, \"" << window_title << "\");" << endl;
     }
 
-    out_file << "    render_and_wait();" << endl;
+    if (is_pong_mode) {
+        out_file << "    run_pong_game();" << endl;
+    } else {
+        out_file << "    render_and_wait();" << endl;
+    }
+
     out_file << "    return 0;\n}" << endl;
     out_file.close();
 }
