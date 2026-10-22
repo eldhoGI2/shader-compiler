@@ -1,0 +1,104 @@
+# ========================================================
+# Showcase Script for Shader Program Compiler (OpenGL 2)
+# Demonstrating: Named colors, hex colors, more shapes,
+# GLSL shaders, line widths, and easy keywords!
+# ========================================================
+
+# 1. Canvas Setup
+title "Shader Program Compiler - OpenGL 2 Showcase"
+window 900 700
+bg #0f172a
+
+# 2. Dynamic Hardware GLSL Fragment Shader Background
+# Options: rainbow, grid, pulse, vignette, none
+shader grid
+
+# 3. Outer Frame & Rounded Card
+color darkgray
+line_width 2
+rounded_rect_outline 30 30 840 640 20
+
+# 4. Translucent Backdrop Card
+color #1e293b
+alpha 200
+rounded_rect 45 45 810 610 16
+
+# 5. Top Banner / Title Bar
+color #3b82f6
+fill_rounded_rect 60 60 780 50 10
+
+color white
+line_width 3
+line 70 85 830 85
+
+# 6. Showcase: Geometric Primitives
+# A. Solid 5-Point Star
+color gold
+fill_star 160 220 70 32 5
+
+color yellow
+line_width 2
+star 160 220 70 32 5
+
+# B. Regular Hexagon (Polygon with 6 sides)
+color cyan
+fill_polygon 380 220 60 6
+
+color white
+line_width 2
+polygon 380 220 60 6
+
+# C. Ellipse
+color magenta
+fill_ellipse 600 220 80 45
+
+color pink
+line_width 2
+ellipse 600 220 80 45
+
+# D. Solid Triangle
+color crimson
+fill_triangle 720 270 780 160 840 270
+
+color white
+line_width 2
+triangle 720 270 780 160 840 270
+
+# 7. Centerpiece: Auto-centered shapes & layered circles
+color indigo
+fill_center_circle 120
+
+color skyblue
+circle 450 440 100
+
+color lime
+fill_circle 450 440 60
+
+color red
+fill_star 450 440 50 22 8
+
+# 8. Modern Squares & Quads
+color orange
+square 100 400 90
+
+color white
+line_width 3
+square_outline 100 400 90
+
+color teal
+fill_quad 700 380 820 400 780 500 680 470
+
+color lavender
+line_width 2
+quad 700 380 820 400 780 500 680 470
+
+# 9. Stylized Footer Lines & Accent Points
+color coral
+line_width 4
+line 100 580 800 580
+
+color gold
+point_size 8
+point 100 580
+point 450 580
+point 800 580
