@@ -1,0 +1,14 @@
+window 800 600
+
+color 0 0 255
+center_rect 600 400
+
+color 255 0 0
+circle 400 300 100
+
+color 0 255 0
+triangle 100 500 400 100 700 500
+
+color 255 255 255
+line 0 0 800 600
+line 0 600 800 0
