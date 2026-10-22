@@ -17,7 +17,6 @@ A high-level **Domain-Specific Language (DSL)** and **Source-to-Source Compiler 
    * [5. World3D: 3D First-Person POV Environment (`world3d.my`)](#5-world3d-3d-first-person-pov-environment-world3dmy)
 6. [Complete DSL Language & Syntax Reference](#-complete-dsl-language--syntax-reference)
 7. [Technical Deep Dive & Architecture](#-technical-deep-dive--architecture)
-8. [University Review & Viva Presentation Guide](#-university-review--viva-presentation-guide)
 
 ---
 
@@ -318,19 +317,3 @@ shadercompailer/
 * **3D Wall Sliding**:
   Candidate positions $(nx, nz)$ are evaluated independently. If an obstacle boundary is breached along the X-axis, $nx$ is clamped to the surface while $nz$ remains free, creating smooth wall-sliding motion.
 
----
-
-## 🎓 University Review & Viva Presentation Guide
-
-When presenting this project to your professor, use this 4-step narrative:
-
-1. **The Motivation**:
-   > *"Sir/Ma'am, standard graphics in C require managing window handles, pointers, GLSL compilation, and matrix math. We developed a Domain-Specific Language that abstracts these complexities into declarative commands like `mode_3d`, `shader grid`, and `pong`."*
-2. **The Transpiler Pipeline**:
-   > *"Our C++ compiler parses `.my` source files, generates intermediate C code (`generated_game.c`), and automatically invokes GCC linking our custom OpenGL 2 runtime engine (`graphics_runtime.h`)."*
-3. **Milestone Achievements**:
-   > *"We evolved our Review 1 prototype from basic 2D shapes into a full graphics suite featuring GPU fragment shaders, 35+ named colors, multi-color gradients, an interactive Pong game with AI and collision, and a navigable 3D first-person environment with depth-buffering."*
-4. **Live Demonstrations to Show Faculty**:
-   * Show 2D vector art: `./mycompiler showcase.my && ./final_game`
-   * Show real-time 2D game: `./mycompiler pong.my && ./final_game` *(Press Spacebar live to switch shaders!)*
-   * Show 3D world: `./mycompiler world3d.my && ./final_game` *(Walk around with WASD and look with mouse!)*
