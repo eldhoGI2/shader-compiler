@@ -812,6 +812,36 @@ static inline void pong_reset_ball(int direction) {
 }
 
 // ==========================================
+// Frame Capture & Screenshot Helper
+// ==========================================
+static inline void check_and_save_screenshot(int w, int h) {
+    const char* path = getenv("SAVE_SCREENSHOT");
+    if (!path) return;
+    static int frame_count = 0;
+    frame_count++;
+    int target_frame = 20;
+    const char* tf_str = getenv("TARGET_FRAME");
+    if (tf_str) target_frame = atoi(tf_str);
+    if (frame_count >= target_frame) {
+        unsigned char* pixels = (unsigned char*)malloc(w * h * 4);
+        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_RGBA32);
+        for (int y = 0; y < h; y++) {
+            memcpy((unsigned char*)surf->pixels + y * surf->pitch,
+                   pixels + (h - 1 - y) * w * 4,
+                   w * 4);
+        }
+        SDL_SaveBMP(surf, path);
+        SDL_FreeSurface(surf);
+        free(pixels);
+        printf("[SCREENSHOT] Saved frame to %s\n", path);
+        if (getenv("AUTO_EXIT")) {
+            exit(0);
+        }
+    }
+}
+
+// ==========================================
 // Interactive Pong Game Loop
 // ==========================================
 static inline void run_pong_game() {
@@ -974,6 +1004,7 @@ static inline void run_pong_game() {
         draw_line(0, 4, screen_width, 4);
         draw_line(0, screen_height - 4, screen_width, screen_height - 4);
 
+        check_and_save_screenshot(screen_width, screen_height);
         SDL_GL_SwapWindow(window);
         SDL_Delay(16);
     }
@@ -1404,6 +1435,7 @@ static inline void run_3d_game() {
         glMatrixMode(GL_MODELVIEW);
         glEnable(GL_DEPTH_TEST);
 
+        check_and_save_screenshot(screen_width, screen_height);
         SDL_GL_SwapWindow(window);
         SDL_Delay(16); // ~60 FPS
     }
@@ -1471,6 +1503,7 @@ static inline void render_and_wait() {
 
         glCallList(scene_display_list);
 
+        check_and_save_screenshot(screen_width, screen_height);
         SDL_GL_SwapWindow(window);
         SDL_Delay(16);
     }
